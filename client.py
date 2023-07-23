@@ -6,11 +6,10 @@ import sys # take command line arguments
 from concurrent.futures import ThreadPoolExecutor
 
 # constants
-nickname = sys.argv[1] if  len(sys.argv) > 1 else "Python"
 SERVER_IP = sys.argv[1] if len(sys.argv) > 1 else "localhost:8999"
 SERVER_URL = "http://"+SERVER_IP+"/"
 WSS_URL = "ws://"+SERVER_IP+"/game"
-        
+
 # async def obtainToken():
 #     async with aiohttp.ClientSession() as session:
 #         headers = {
@@ -48,6 +47,12 @@ async def pingpong(ws):
         await asyncio.sleep(5)
 
 async def main(): 
+    # variables
+    nickname = ""
+    id = ""
+    isDead = False
+    gameEnded = False
+
     # TOKEN = await obtainToken()
 
     # establish ws connection
@@ -70,18 +75,45 @@ async def main():
     }
     await sendMsg(ws,msg)
 
+    # Receive joinGame reply (ignore)
     result =  ws.recv()
     print("received: ",result)
+    response = json.loads(result)
+    id = response["id"]
+    assert(response["result"]=="success")
 
-    # Receive all kinds of messages including the pongs, join/leave events, and actual messages
-    while True:
-        # await asyncio.sleep(100)
-        # number = await ainput("Please input your number: ")
-        resp = await asyncio.get_event_loop().run_in_executor(None, ws.recv)
-        print("received: ",resp)
+    # Receive startGame event
+    result = ws.recv()
+    print("received: ",result)
+    response = json.loads(result)
+    assert(response["event"]=="roundStart")
 
-        # # convert from a json string to a python dictionary
-        # response = json.loads(resp)
+    # Receive all kinds of messages until game ends
+    while not gameEnded:
+        if not isDead:
+            number = await ainput("Please input your number: ")
+            msg = {
+                "method": "submitNumber",
+                "id": id,
+                "number": number,
+            }
+            await sendMsg(ws,msg)
+
+        # Receive round result from the server
+        result = await asyncio.get_event_loop().run_in_executor(None, ws.recv)
+        print("received: ",result)
+
+        # convert from a json string to a python dictionary
+        response = json.loads(result)
+        assert(response["event"]=="roundStart" or response["event"]=="gameEnd")
+
+        if response["event"]=="gameEnd":
+            gameEnded = True
+        elif response["event"]=="roundStart":
+            # check if isDead
+            ps = response["participants"]
+            p = filter(lambda p: p["id"]==id,ps)[0]
+            isDead = p["isDead"] 
 
         # # check if it is an actual message
         # if response.get("method",False) == "sendMessage":
