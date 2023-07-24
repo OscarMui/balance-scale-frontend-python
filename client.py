@@ -34,6 +34,11 @@ async def sendMsg(ws,msg):
     print("SEND: ",msg)
     ws.send(json.dumps(msg))
 
+# ws.recv() will stop the ping pongs
+# receive a message, only use this when you know the message will not come soon
+async def recvMsg(ws):
+    return await asyncio.get_event_loop().run_in_executor(None, ws.recv)
+
 # asynchronus input copied from web
 async def ainput(prompt: str = ''):
     with ThreadPoolExecutor(1, 'ainput') as executor:
@@ -42,7 +47,7 @@ async def ainput(prompt: str = ''):
 # responsible for sending pings
 async def pingpong(ws):
     while True:
-        print("ping")
+        # print("ping")
         ws.ping()
         await asyncio.sleep(5)
 
@@ -82,37 +87,43 @@ async def main():
     id = response["id"]
     assert(response["result"]=="success")
 
-    # Receive startGame event
-    result = ws.recv()
-    print("received: ",result)
+    # Receive start game event
+    result = await recvMsg(ws)
     response = json.loads(result)
-    assert(response["event"]=="roundStart")
+    assert(response["event"]=="gameInfo")
 
     # Receive all kinds of messages until game ends
     while not gameEnded:
         if not isDead:
-            number = await ainput("Please input your number: ")
+            guess = await ainput("Please input your guess: ")
             msg = {
-                "method": "submitNumber",
+                "method": "submitGuess",
                 "id": id,
-                "number": number,
+                "guess": guess,
             }
             await sendMsg(ws,msg)
 
-        # Receive round result from the server
-        result = await asyncio.get_event_loop().run_in_executor(None, ws.recv)
-        print("received: ",result)
+            # Receive submitGuess reply (ignore)
+            result =  ws.recv()
+            print("received: ",result)
+            response = json.loads(result)
+            assert(response["result"]=="success")
+
+        # Receive round result from the server, need await as it might take a while
+        result = await recvMsg(ws)
+        print(result)
 
         # convert from a json string to a python dictionary
         response = json.loads(result)
-        assert(response["event"]=="roundStart" or response["event"]=="gameEnd")
+        assert(response["event"]=="gameInfo")
 
-        if response["event"]=="gameEnd":
-            gameEnded = True
-        elif response["event"]=="roundStart":
+        if response["event"]=="gameInfo":
+            # check if gameEnded
+            gameEnded = response["gameEnded"]
+
             # check if isDead
             ps = response["participants"]
-            p = filter(lambda p: p["id"]==id,ps)[0]
+            p = list(filter(lambda p: p["id"]==id,ps))[0]
             isDead = p["isDead"] 
 
         # # check if it is an actual message
@@ -129,4 +140,6 @@ async def main():
         #     except:
         #         print("Error decoding message, message ignored")
 
+    print("Game ended")
+    ws.close()
 asyncio.run(main())
