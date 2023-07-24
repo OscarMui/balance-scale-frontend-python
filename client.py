@@ -31,7 +31,7 @@ WSS_URL = "ws://"+SERVER_IP+"/game"
 
 # send a message to the websocket, handling the ID correctly with mutual exclusion
 async def sendMsg(ws,msg):
-    print("SEND: ",msg)
+    print("sent: ", msg)
     ws.send(json.dumps(msg))
 
 # ws.recv() will stop the ping pongs
@@ -57,6 +57,7 @@ async def main():
     id = ""
     isDead = False
     gameEnded = False
+    gameInfo = None
 
     # TOKEN = await obtainToken()
 
@@ -70,7 +71,7 @@ async def main():
     # spawns off ping pong task
     asyncio.create_task(pingpong(ws))
 
-    nickname = await ainput("Please input your nickname: ")
+    nickname = await ainput(">>> Please input your nickname: ")
     
     # request for join room (values mostly copied from docs)
     # https://docs.openvidu.io/en/stable/developing/rpc/#joinroom
@@ -91,11 +92,27 @@ async def main():
     result = await recvMsg(ws)
     response = json.loads(result)
     assert(response["event"]=="gameInfo")
+    gameInfo = response
 
-    # Receive all kinds of messages until game ends
+    print(">>> We got enough players, the game starts now.")
+    print("The players are: ")
+    for p in gameInfo["participants"]:
+        print(">>>", p["nickname"])
+
+    # Round main loop 
     while not gameEnded:
         if not isDead:
-            guess = await ainput("Please input your guess: ")
+            guess = None
+            try:
+                guess = int(await ainput(f'>>> Round {gameInfo["round"]}: Please input your guess: '))
+            except TypeError:
+                guess = None
+            
+            while not (isinstance(guess, int) and guess >= 0 and guess <= 100):
+                try:
+                    guess = await ainput("Guess invalid, please input again: ")
+                except ValueError:
+                    guess = None
             msg = {
                 "method": "submitGuess",
                 "id": id,
@@ -109,6 +126,8 @@ async def main():
             response = json.loads(result)
             assert(response["result"]=="success")
 
+            print(">>> Guess registered.")
+        print(">>> Waiting for others to submit their numbers.")
         # Receive round result from the server, need await as it might take a while
         result = await recvMsg(ws)
         print(result)
@@ -116,7 +135,8 @@ async def main():
         # convert from a json string to a python dictionary
         response = json.loads(result)
         assert(response["event"]=="gameInfo")
-
+        gameInfo = response
+        
         if response["event"]=="gameInfo":
             # check if gameEnded
             gameEnded = response["gameEnded"]
@@ -124,21 +144,19 @@ async def main():
             # check if isDead
             ps = response["participants"]
             p = list(filter(lambda p: p["id"]==id,ps))[0]
+            if isDead != p["isDead"]:
+                print(f'>>> You reached {p["score"]}, GAME OVER.')
             isDead = p["isDead"] 
 
-        # # check if it is an actual message
-        # if response.get("method",False) == "sendMessage":
-        #     print("detected message, now decoding")
-        #     try:
-        #         # retrieving the message from the recived message string
-        #         params = response["params"]
-        #         # print("PARAMS: ",params)
-        #         data = json.loads(params["data"])
-        #         # print("DATA: ",data)
-        #         message = data["message"]
-        #         print("MESSAGE: ",message)
-        #     except:
-        #         print("Error decoding message, message ignored")
+        print(f'>>> Round {gameInfo["round"]} is over, these are the guesses players submitted:')
+        print(">>> Nickname | Guess | Score")
+        for p in gameInfo["participants"]:
+            print(f'>>> {p["nickname"]} | {p["guesses"][gameInfo["round"]]} | {p["score"]}',end="")
+            if p["isDead"]:
+                print("<-- GAME OVER")
+            else:
+                print("") # to go to next line
+        # print("The winner(s) is/are: ")
 
     print("Game ended")
     ws.close()
