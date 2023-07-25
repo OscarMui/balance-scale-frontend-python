@@ -94,23 +94,26 @@ async def main():
     assert(response["event"]=="gameInfo")
     gameInfo = response
 
-    print(">>> We got enough players, the game starts now.")
-    print("The players are: ")
+    #cyan
+    print("\033[96m>>> We got enough players, the game starts now.\033[0m")
+    print(">>> The players are: ")
     for p in gameInfo["participants"]:
-        print(">>>", p["nickname"])
+        print(">>> ", p["nickname"])
 
     # Round main loop 
     while not gameEnded:
         if not isDead:
             guess = None
             try:
-                guess = int(await ainput(f'>>> Round {gameInfo["round"]}: Please input your guess: '))
+                # Yellow
+                guess = int(await ainput(f'\033[93m>>> Round {gameInfo["round"]}: {nickname} please input your guess: \033[0m'))
             except TypeError:
                 guess = None
             
             while not (isinstance(guess, int) and guess >= 0 and guess <= 100):
                 try:
-                    guess = await ainput("Guess invalid, please input again: ")
+                    # Red
+                    guess = int(await ainput("\033[91mGuess invalid, please input again: \033[0m"))
                 except ValueError:
                     guess = None
             msg = {
@@ -145,18 +148,22 @@ async def main():
             ps = response["participants"]
             p = list(filter(lambda p: p["id"]==id,ps))[0]
             if isDead != p["isDead"]:
-                print(f'>>> You reached {p["score"]}, GAME OVER.')
+                # red
+                print(f'\033[91m>>> You reached {p["score"]}, GAME OVER.\033[0m')
             isDead = p["isDead"] 
 
-        print(f'>>> Round {gameInfo["round"]} is over, these are the guesses players submitted:')
+        print(f'>>> Round {gameInfo["round"]-1} is over, these are the guesses players submitted:')
         print(">>> Nickname | Guess | Score")
         for p in gameInfo["participants"]:
-            print(f'>>> {p["nickname"]} | {p["guesses"][gameInfo["round"]]} | {p["score"]}',end="")
-            if p["isDead"]:
-                print("<-- GAME OVER")
+            print(f'>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} | {p["guesses"][gameInfo["round"]-1] if len(p["guesses"])>gameInfo["round"]-1 else "N/A"} | {p["score"]}',end="")
+            if p["id"] in gameInfo["prevWinners"]:
+                # Yellow
+                print("\033[93m <-- Round winner\033[0m")
+            elif p["isDead"]:
+                # Red
+                print("\033[91m <-- GAME OVER\033[0m")
             else:
                 print("") # to go to next line
-        # print("The winner(s) is/are: ")
 
     print("Game ended")
     ws.close()
