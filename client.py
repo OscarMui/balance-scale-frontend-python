@@ -71,7 +71,18 @@ async def main():
     # spawns off ping pong task
     asyncio.create_task(pingpong(ws))
 
-    nickname = await ainput(">>> Please input your nickname: ")
+    # receive connection reply (get the id)
+    result =  ws.recv()
+    print("received: ",result)
+    response = json.loads(result)
+    id = response["id"]
+    assert(response["result"]=="success")
+
+
+    print(">>> Welcome to the game!")
+    print(">>> Difficulty: King of Diamonds - Tenbin (Balance Scale)")
+    print(">>> Rules: The player must select a number from 0 to 100. Once all numbers are selected, the average will be calculated, then multiplied by 0.8. The player closest to the number wins the round. The other players each lose a point. All players start with 0 points. If a player reaches -10 points, it is a GAME OVER for that player. A new rule will be introduced for every player eliminated. It is GAME CLEAR for the last remaining player.")
+    nickname = await ainput("\033[93m>>> Are you ready? Please input your nickname: \033[0m")
     
     # request for join room (values mostly copied from docs)
     # https://docs.openvidu.io/en/stable/developing/rpc/#joinroom
@@ -85,10 +96,9 @@ async def main():
     result =  ws.recv()
     print("received: ",result)
     response = json.loads(result)
-    id = response["id"]
     assert(response["result"]=="success")
 
-    # Receive start game event
+    # Receive gameInfo event
     result = await recvMsg(ws)
     response = json.loads(result)
     assert(response["event"]=="gameInfo")
