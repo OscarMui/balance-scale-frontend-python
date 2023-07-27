@@ -4,6 +4,7 @@ import json # for json.dumps
 import aiohttp # for REST API
 import sys # take command line arguments
 from concurrent.futures import ThreadPoolExecutor
+from enum import Enum
 
 # constants
 SERVER_IP = sys.argv[1] if len(sys.argv) > 1 else "localhost:8999"
@@ -28,6 +29,11 @@ WSS_URL = "ws://"+SERVER_IP+"/game"
 #             token = response['token']
 #             print(f'token: {token}')
 #             return token
+
+# class Special(Enum):
+#     PLAYER_DEAD = 0
+#     PLAYER_DISCONNECTED = 1
+#     ADDITIONAL_RULE_APPLIED = 2
 
 # send a message to the websocket, handling the ID correctly with mutual exclusion
 async def sendMsg(ws,msg):
@@ -56,7 +62,6 @@ async def main():
     nickname = ""
     id = ""
     isDead = False
-    gameEnded = False
     gameInfo = None
 
     # TOKEN = await obtainToken()
@@ -98,10 +103,10 @@ async def main():
     response = json.loads(result)
     assert(response["result"]=="success")
 
-    # Receive gameInfo event
+    # Receive gameStart event
     result = await recvMsg(ws)
     response = json.loads(result)
-    assert(response["event"]=="gameInfo")
+    assert(response["event"]=="gameStart")
     gameInfo = response
 
     #cyan
@@ -111,20 +116,20 @@ async def main():
         print(">>> ", p["nickname"])
 
     # Round main loop 
-    while not gameEnded:
+    while not gameInfo["gameEnded"]:
         if not isDead:
             guess = None
             try:
                 # Yellow
                 guess = int(await ainput(f'\033[93m>>> Round {gameInfo["round"]}: {nickname} please input your guess: \033[0m'))
-            except TypeError:
+            except (TypeError, ValueError) as e:
                 guess = None
             
             while not (isinstance(guess, int) and guess >= 0 and guess <= 100):
                 try:
                     # Red
                     guess = int(await ainput("\033[91mGuess invalid, please input again: \033[0m"))
-                except ValueError:
+                except (TypeError, ValueError) as e:
                     guess = None
             msg = {
                 "method": "submitGuess",
@@ -139,7 +144,8 @@ async def main():
             response = json.loads(result)
             assert(response["result"]=="success")
 
-            print(">>> Guess registered.")
+            # Green
+            print("\033[32m>>> Guess registered.\033[0m")
         print(">>> Waiting for others to submit their numbers.")
         # Receive round result from the server, need await as it might take a while
         result = await recvMsg(ws)
@@ -151,30 +157,57 @@ async def main():
         gameInfo = response
         
         if response["event"]=="gameInfo":
-            # check if gameEnded
-            gameEnded = response["gameEnded"]
-
-            # check if isDead
+            # check if ourselves isDead
             ps = response["participants"]
             p = list(filter(lambda p: p["id"]==id,ps))[0]
-            if isDead != p["isDead"]:
-                # red
-                print(f'\033[91m>>> You reached {p["score"]}, GAME OVER.\033[0m')
+            # if isDead != p["isDead"]:
+            #     # red
+            #     print(f'\033[91m>>> You reached {p["score"]} score, GAME OVER.\033[0m')
             isDead = p["isDead"] 
 
         print(f'>>> Round {gameInfo["round"]-1} is over, these are the guesses players submitted:')
         print(">>> Nickname | Guess | Score")
         for p in gameInfo["participants"]:
-            print(f'>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} | {p["guesses"][gameInfo["round"]-1] if len(p["guesses"])>gameInfo["round"]-1 else "N/A"} | {p["score"]}',end="")
-            if p["id"] in gameInfo["prevWinners"]:
-                # Yellow
-                print("\033[93m <-- Round winner\033[0m")
+            print(f'>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} | {p["guess"] if p["guess"]!=None else "N/A"} | {p["score"]}',end="")
+            if p["id"] in gameInfo["winners"]:
+                # Green
+                print("\033[32m <-- Round winner\033[0m")
             elif p["isDead"]:
                 # Red
                 print("\033[91m <-- GAME OVER\033[0m")
             else:
                 print("") # to go to next line
+        print(f'>>> The target was {round(gameInfo["target"],2)}.')
 
-    print("Game ended")
+        # Remind people which rules are applied
+        for r in gameInfo["justAppliedRules"]:
+            # Magenta
+            if r == 2:
+                print("\033[95m>>> Rule applied: If someone chooses 0, a player who chooses 100 automatically wins the round.\033[0m")
+            elif r == 3:
+                print("\033[95m>>> Rule applied: If a player chooses the exact correct number, they win the round and all other players lose two points.\033[0m")
+            elif r == 4:
+                print("\033[95m>>> Rule applied: If two or more players choose the same number, the number is invalid and all players who selected the number will lose a point.\033[0m")
+        # Print people died
+        for d in gameInfo["justDiedParticipants"]:
+            ps = response["participants"]
+            p = list(filter(lambda p: p["id"]==d,ps))[0]
+            # Red
+            print(f'\033[91m>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} reached {p["score"]} score. GAME OVER.\033[0m')
+        # Display the additional rules if someone died
+        if len(gameInfo["justDiedParticipants"]) > 0:
+            # Magenta
+            print("\033[95m>>> Since at least one player died, the following rules are added from now on:")
+            aliveCount = gameInfo["aliveCount"]
+            if aliveCount <= 4:
+                print("\033[95m>>> 1. If two or more players choose the same number, the number is invalid and all players who selected the number will lose a point.\033[0m")
+            if aliveCount <= 3:
+                print("\033[95m>>> 2. If a player chooses the exact correct number, they win the round and all other players lose two points.\033[0m")
+            if aliveCount <= 2:
+                print("\033[95m>>> 3. If someone chooses 0, a player who chooses 100 automatically wins the round.\033[0m")
+    ps = response["participants"]
+    p = list(filter(lambda p: not p["isDead"],ps))[0]
+    #cyan
+    print(f'\033[96m>>> Game ended, the winner is {p["nickname"]+(" (YOU)" if p["id"]==id else "")}\033[0m')
     ws.close()
 asyncio.run(main())
