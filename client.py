@@ -11,6 +11,7 @@ SERVER_IP = sys.argv[1] if len(sys.argv) > 1 else "localhost:8999"
 SERVER_URL = "http://"+SERVER_IP+"/"
 WSS_URL = "ws://"+SERVER_IP+"/game"
 
+DEAD_LIMIT = -10
 # async def obtainToken():
 #     async with aiohttp.ClientSession() as session:
 #         headers = {
@@ -192,8 +193,12 @@ async def main():
         for d in gameInfo["justDiedParticipants"]:
             ps = response["participants"]
             p = list(filter(lambda p: p["id"]==d,ps))[0]
-            # Red
-            print(f'\033[91m>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} reached {p["score"]} score. GAME OVER.\033[0m')
+            if p["score"]==DEAD_LIMIT:
+                # Red
+                print(f'\033[91m>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} reached {DEAD_LIMIT} score. GAME OVER.\033[0m')
+            else:
+                # Red
+                print(f'\033[91m>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} disconnected. GAME OVER.\033[0m')
         # Display the additional rules if someone died
         if len(gameInfo["justDiedParticipants"]) > 0:
             # Magenta
@@ -206,8 +211,10 @@ async def main():
             if aliveCount <= 2:
                 print("\033[95m>>> 3. If someone chooses 0, a player who chooses 100 automatically wins the round.\033[0m")
     ps = response["participants"]
-    p = list(filter(lambda p: not p["isDead"],ps))[0]
+    filteredP = list(filter(lambda p: not p["isDead"],ps))
     #cyan
-    print(f'\033[96m>>> Game ended, the winner is {p["nickname"]+(" (YOU)" if p["id"]==id else "")}\033[0m')
+    if(len(filteredP)>0):
+        p = filteredP[0]
+        print(f'\033[96m>>> Game ended, the winner is {p["nickname"]+(" (YOU)" if p["id"]==id else "")}\033[0m')
     ws.close()
 asyncio.run(main())
