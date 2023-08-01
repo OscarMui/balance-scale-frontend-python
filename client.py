@@ -7,9 +7,10 @@ from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 
 # constants
-SERVER_IP = sys.argv[1] if len(sys.argv) > 1 else "localhost:8999"
-SERVER_URL = "http://"+SERVER_IP
-WSS_URL = "ws://"+SERVER_IP+"/game"
+SERVER_IP = sys.argv[1] if len(sys.argv) > 1 else "tenbin-b735da2f640d.herokuapp.com"
+SSL = sys.argv[2]=="True" if len(sys.argv) > 2 else True
+SERVER_URL = f'http{"s" if SSL else ""}://{SERVER_IP}'
+WSS_URL = f'ws{"s" if SSL else ""}://{SERVER_IP}/game'
 
 CLIENT_VERSION = "20230801.0"
 DEAD_LIMIT = -10
@@ -75,6 +76,10 @@ async def main():
     id = ""
     isDead = False
     gameInfo = None
+
+    print("WS server:", WSS_URL)
+    print("HTTP server:", SERVER_URL)
+    print("Client version:", CLIENT_VERSION)
 
     TOKEN = await obtainToken()
 
