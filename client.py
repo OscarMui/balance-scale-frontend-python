@@ -8,28 +8,39 @@ from enum import Enum
 
 # constants
 SERVER_IP = sys.argv[1] if len(sys.argv) > 1 else "localhost:8999"
-SERVER_URL = "http://"+SERVER_IP+"/"
+SERVER_URL = "http://"+SERVER_IP
 WSS_URL = "ws://"+SERVER_IP+"/game"
 
+CLIENT_VERSION = "20230801.0"
 DEAD_LIMIT = -10
-# async def obtainToken():
-#     async with aiohttp.ClientSession() as session:
-#         headers = {
-#             "Content-Type": "application/json"
-#         } 
+
+async def obtainToken():
+    async with aiohttp.ClientSession() as session:
+        headers = {
+            "Content-Type": "application/json"
+        } 
         
-#         async with session.post(
-#             SERVER_URL + "???", 
-#             verify_ssl=False, 
-#             headers=headers
-#         ) as resp:
-#             # print(f'resp:{resp}') # print out the response header
-#             # response = await resp.text() # use for testing in case the response is not as expected
-#             response = await resp.json() # get the actual response
-#             # print(f'response:{response}')
-#             token = response['token']
-#             print(f'token: {token}')
-#             return token
+        async with session.get(
+            SERVER_URL + "/api/version"
+        ) as resp:
+            response = await resp.json()
+            assert(response["result"]=="success")
+            acceptedClientVersions = response["acceptedClientVersions"]
+            if CLIENT_VERSION not in acceptedClientVersions:
+                raise Exception("VERSION ERROR: Incompatible version with server. Please obtain the latest code.")
+    
+        # async with session.post(
+        #     SERVER_URL + "???", 
+        #     verify_ssl=False, 
+        #     headers=headers
+        # ) as resp:
+        #     # print(f'resp:{resp}') # print out the response header
+        #     # response = await resp.text() # use for testing in case the response is not as expected
+        #     response = await resp.json() # get the actual response
+        #     # print(f'response:{response}')
+        #     token = response['token']
+        #     print(f'token: {token}')
+        #     return token
 
 # class Special(Enum):
 #     PLAYER_DEAD = 0
@@ -65,7 +76,7 @@ async def main():
     isDead = False
     gameInfo = None
 
-    # TOKEN = await obtainToken()
+    TOKEN = await obtainToken()
 
     # establish ws connection
     ws = websocket.create_connection(
