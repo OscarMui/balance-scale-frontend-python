@@ -12,8 +12,7 @@ SSL = sys.argv[2]=="True" if len(sys.argv) > 2 else True
 SERVER_URL = f'http{"s" if SSL else ""}://{SERVER_IP}'
 WSS_URL = f'ws{"s" if SSL else ""}://{SERVER_IP}/game'
 
-CLIENT_VERSION = "20230801.0"
-DEAD_LIMIT = -10
+CLIENT_VERSION = "20230802.0"
 
 async def obtainToken():
     async with aiohttp.ClientSession() as session:
@@ -80,7 +79,9 @@ async def main():
     print("WS server:", WSS_URL)
     print("HTTP server:", SERVER_URL)
     print("Client version:", CLIENT_VERSION)
+    print("Establishing connection, please wait...")
 
+    # Do the necessary API calls
     TOKEN = await obtainToken()
 
     # establish ws connection
@@ -88,7 +89,8 @@ async def main():
         WSS_URL,
         # sslopt={"cert_reqs":ssl.CERT_NONE} # bypass SSL check
     )
-    print("WSS connection established ", WSS_URL)
+
+    print("Connection established")
 
     # spawns off ping pong task
     asyncio.create_task(pingpong(ws))
@@ -105,7 +107,8 @@ async def main():
     print(">>> Difficulty: King of Diamonds - Tenbin (Balance Scale)")
     print(">>> Rules: The player must select a number from 0 to 100. Once all numbers are selected, the average will be calculated, then multiplied by 0.8. The player closest to the number wins the round. The other players each lose a point. All players start with 0 points. If a player reaches -10 points, it is a GAME OVER for that player. A new rule will be introduced for every player eliminated. It is GAME CLEAR for the last remaining player.")
     nickname = await ainput("\033[93m>>> Are you ready? Please input your nickname: \033[0m")
-    
+    while nickname == "":
+        nickname = await ainput("\033[91m>>> Nickname cannot be blank, please input again: \033[0m")
     # request for join room (values mostly copied from docs)
     # https://docs.openvidu.io/en/stable/developing/rpc/#joinroom
     msg = {
@@ -208,10 +211,10 @@ async def main():
         # Print people died
         for d in gameInfo["justDiedParticipants"]:
             ps = response["participants"]
-            p = list(filter(lambda p: p["id"]==d,ps))[0]
-            if p["score"]==DEAD_LIMIT:
+            p = list(filter(lambda p: p["id"]==d["id"],ps))[0]
+            if d["reason"]=="deadLimit":
                 # Red
-                print(f'\033[91m>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} reached {DEAD_LIMIT} score. GAME OVER.\033[0m')
+                print(f'\033[91m>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} reached {p["score"]} score. GAME OVER.\033[0m')
             else:
                 # Red
                 print(f'\033[91m>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} disconnected. GAME OVER.\033[0m')
