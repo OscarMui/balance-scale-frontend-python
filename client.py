@@ -3,6 +3,7 @@ import websocket # for connecting to web socket
 import json # for json.dumps
 import aiohttp # for REST API
 import sys # take command line arguments
+import time 
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 
@@ -12,8 +13,10 @@ SSL = sys.argv[2]=="True" if len(sys.argv) > 2 else True
 SERVER_URL = f'http{"s" if SSL else ""}://{SERVER_IP}'
 WSS_URL = f'ws{"s" if SSL else ""}://{SERVER_IP}/game'
 
-CLIENT_VERSION = "20230802.0"
+CLIENT_VERSION = "20230802.dev"
 
+def now():
+    return round(time.time() * 1000)
 async def obtainToken():
     async with aiohttp.ClientSession() as session:
         headers = {
@@ -62,6 +65,42 @@ async def ainput(prompt: str = ''):
     with ThreadPoolExecutor(1, 'ainput') as executor:
         return (await asyncio.get_event_loop().run_in_executor(executor, input, prompt)).rstrip()
 
+async def printCountdown(endTime):
+    while now() < endTime:
+        print(f'{endTime-now()}s') 
+        await asyncio.sleep(1)
+
+async def submitGuesses(ws):
+    while True:
+        guess = None
+        try:
+            # Yellow
+            guess = int(await ainput(f'\033[93m>>> Round {gameInfo["round"]}: {nickname} please input your guess: \033[0m'))
+        except (TypeError, ValueError) as e:
+            guess = None
+        
+        while not (isinstance(guess, int) and guess >= 0 and guess <= 100):
+            try:
+                # Red
+                guess = int(await ainput("\033[91mGuess invalid, please input again: \033[0m"))
+            except (TypeError, ValueError) as e:
+                guess = None
+        msg = {
+            "method": "submitGuess",
+            "id": id,
+            "guess": guess,
+        }
+        await sendMsg(ws,msg)
+
+        # Receive submitGuess reply (ignore)
+        result =  ws.recv()
+        print("received: ",result)
+        response = json.loads(result)
+        assert(response["result"]=="success")
+
+        # Green
+        print("\033[32m>>> Guess registered.\033[0m")
+        
 # responsible for sending pings
 async def pingpong(ws):
     while True:
@@ -79,18 +118,16 @@ async def main():
     print("WS server:", WSS_URL)
     print("HTTP server:", SERVER_URL)
     print("Client version:", CLIENT_VERSION)
-    print("Establishing connection, please wait...")
+    print("Establishing connection to the server, please wait...")
 
     # Do the necessary API calls
     TOKEN = await obtainToken()
 
+    print("Connected to server. Establishing connection to the game, please wait...")
     # establish ws connection
-    ws = websocket.create_connection(
-        WSS_URL,
-        # sslopt={"cert_reqs":ssl.CERT_NONE} # bypass SSL check
-    )
+    ws = websocket.create_connection(WSS_URL)
 
-    print("Connection established")
+    print("Connected to game")
 
     # spawns off ping pong task
     asyncio.create_task(pingpong(ws))
@@ -138,34 +175,9 @@ async def main():
     # Round main loop 
     while not gameInfo["gameEnded"]:
         if not isDead:
-            guess = None
-            try:
-                # Yellow
-                guess = int(await ainput(f'\033[93m>>> Round {gameInfo["round"]}: {nickname} please input your guess: \033[0m'))
-            except (TypeError, ValueError) as e:
-                guess = None
-            
-            while not (isinstance(guess, int) and guess >= 0 and guess <= 100):
-                try:
-                    # Red
-                    guess = int(await ainput("\033[91mGuess invalid, please input again: \033[0m"))
-                except (TypeError, ValueError) as e:
-                    guess = None
-            msg = {
-                "method": "submitGuess",
-                "id": id,
-                "guess": guess,
-            }
-            await sendMsg(ws,msg)
-
-            # Receive submitGuess reply (ignore)
-            result =  ws.recv()
-            print("received: ",result)
-            response = json.loads(result)
-            assert(response["result"]=="success")
-
-            # Green
-            print("\033[32m>>> Guess registered.\033[0m")
+            submitGuessesTask = asyncio.create_task(submitGuesses(ws))
+            printCountdownTask = asyncio.create_task(printCountdown(gameInfo["roundEndTime"]))
+            await asyncio.gather(submitGuessesTask, printCountdownTask)
         print(">>> Waiting for others to submit their numbers.")
         # Receive round result from the server, need await as it might take a while
         result = await recvMsg(ws)
