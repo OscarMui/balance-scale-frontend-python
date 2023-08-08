@@ -48,9 +48,10 @@ async def obtainToken():
         #     return token
 
 # send a message to the websocket, handling the ID correctly with mutual exclusion
-async def sendMsg(ws,msg):
+def sendMsg(ws,msg):
     print("sent: ", msg)
     ws.send(json.dumps(msg))
+    print("finished sending")
 
 # ws.recv() will stop the ping pongs
 # receive a message, only use this when you know the message will not come soon
@@ -70,18 +71,14 @@ async def pingpong(ws):
         await asyncio.sleep(5)
 
 #* Tasks that happen during round
-# specify endTime of a round, with a lock to prevent race conditions
-endTime = None
-lock = asyncio.Lock()
 
 async def printCountdown(endTime):
     while now() < endTime:
-        print(f'{endTime-now()}s') 
+        print(f'{(endTime-now())//1000}s') 
         await asyncio.sleep(1)
 
-async def submitGuesses(ws):
-    global endTime, lock
-    while True:
+async def submitGuesses(ws,id,endTime):
+    while now() < endTime:
         guess = None
         try:
             # Yellow
@@ -100,55 +97,16 @@ async def submitGuesses(ws):
             "id": id,
             "guess": guess,
         }
-        await sendMsg(ws,msg)
+        sendMsg(ws,msg)
 
         # Receive submitGuess reply (ignore)
-        result =  ws.recv()
+        result = ws.recv()
         print("received: ",result)
         response = json.loads(result)
         assert(response["result"]=="success")
 
         # Green
         print("\033[32m>>> Guess registered.\033[0m")
-
-# Receiving all messages from the server
-# Terminate when it receives gameInfo
-async def receiveEvents(ws):
-    global endTime, lock
-    while True:
-        # Receive events from the server, need await as it might take a while
-        result = await recvMsg(ws)
-        print(result)
-
-        # convert from a json string to a python dictionary
-        response = json.loads(result)
-        assert("event" in response)
-
-        if response["event"]=="participantDisconnectedMidgame":
-            # Print person died
-            ps = gameInfo["participants"]
-            p = list(filter(lambda p: p["id"]==response["id"],ps))[0]
-            # Red
-            print(f'\033[91m>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} disconnected. GAME OVER.\033[0m')
-            # Display the additional rules
-            # Magenta
-            print("\033[95m>>> Since at least one player died, the following rules are added from now on:")
-            aliveCount = gameInfo["aliveCount"]
-            if aliveCount <= 4:
-                print("\033[95m>>> 1. If two or more players choose the same number, the number is invalid and all players who selected the number will lose a point.\033[0m")
-            if aliveCount <= 3:
-                print("\033[95m>>> 2. If a player chooses the exact correct number, they win the round and all other players lose two points.\033[0m")
-            if aliveCount <= 2:
-                print("\033[95m>>> 3. If someone chooses 0, a player who chooses 100 automatically wins the round.\033[0m")
-        elif response["event"]=="shortenCountdown":
-            endTime = response["endTime"]
-        elif response["event"]=="gameInfo":
-            # terminate and return response
-            return response
-        else:
-            raise Exception("Unexpected event received")
-        gameInfo = response
-
 
 async def main(): 
     # variables
@@ -175,7 +133,7 @@ async def main():
     asyncio.create_task(pingpong(ws))
 
     # receive connection reply (get the id)
-    result =  ws.recv()
+    result =  await recvMsg(ws)
     print("received: ",result)
     response = json.loads(result)
     id = response["id"]
@@ -194,7 +152,7 @@ async def main():
         "method": "joinGame",
         "nickname": nickname,
     }
-    await sendMsg(ws,msg)
+    sendMsg(ws,msg)
 
     # Receive joinGame reply (ignore)
     result =  ws.recv()
@@ -219,19 +177,90 @@ async def main():
         if not isDead:
             print(f'\033[93m>>> Round {gameInfo["round"]} - {nickname}\033[0m')
             endTime = gameInfo["roundEndTime"]
-            submitGuessesTask = asyncio.create_task(submitGuesses(ws))
-            printCountdownTask = asyncio.create_task(printCountdown(gameInfo["roundEndTime"]))
+            submitGuessesTask = asyncio.create_task(submitGuesses(ws,id,endTime))
+            printCountdownTask = asyncio.create_task(printCountdown(endTime))
             
-            
-            await asyncio.gather(submitGuessesTask, printCountdownTask)
-        else:
-            print(">>> Waiting for others to submit their numbers.")
-            # Receive round result from the server, need await as it might take a while
             result = await recvMsg(ws)
             print(result)
-
-            # convert from a json string to a python dictionary
             response = json.loads(result)
+
+            while "event" not in response or response["event"]!="gameInfo":
+                # Receive events from the server, need await as it might take a while
+                # Receiving all messages from the server
+                # Terminate when it receives gameInfo                
+                if "event" in response:
+                    if response["event"]=="participantDisconnectedMidgame":
+                        # Print person died
+                        ps = gameInfo["participants"]
+                        p = list(filter(lambda p: p["id"]==response["id"],ps))[0]
+                        # Red
+                        print(f'\033[91m>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} disconnected. GAME OVER.\033[0m')
+                        # Display the additional rules
+                        # Magenta
+                        print("\033[95m>>> Since at least one player died, the following rules are added from now on:")
+                        aliveCount = response["aliveCount"]
+                        if aliveCount <= 4:
+                            print("\033[95m>>> 1. If two or more players choose the same number, the number is invalid and all players who selected the number will lose a point.\033[0m")
+                        if aliveCount <= 3:
+                            print("\033[95m>>> 2. If a player chooses the exact correct number, they win the round and all other players lose two points.\033[0m")
+                        if aliveCount <= 2:
+                            print("\033[95m>>> 3. If someone chooses 0, a player who chooses 100 automatically wins the round.\033[0m")
+                    elif response["event"]=="shortenCountdown":
+                        # update endTime
+                        endTime = response["endTime"]
+                        # cancel original tasks
+                        submitGuessesTask.cancel()
+                        printCountdownTask.cancel()
+                        # reinitiate those tasks with the new endTime
+                        submitGuessesTask = asyncio.create_task(submitGuesses(ws,id,endTime))
+                        printCountdownTask = asyncio.create_task(printCountdown(endTime))
+                    else:
+                        raise Exception("Unexpected event received")
+                
+                result = await recvMsg(ws)
+                print(result)
+                response = json.loads(result)
+
+            assert(response["event"]=="gameInfo")
+            gameInfo = response
+
+        else:
+            print(">>> Waiting for others to submit their numbers.")
+
+            result = await recvMsg(ws)
+            print(result)
+            response = json.loads(result)
+            assert("event" in response)
+
+            while response["event"]!="gameInfo":
+                # Receive events from the server, need await as it might take a while
+                # Receiving all messages from the server
+                # Terminate when it receives gameInfo                
+
+                if response["event"]=="participantDisconnectedMidgame":
+                    # Print person died
+                    ps = gameInfo["participants"]
+                    p = list(filter(lambda p: p["id"]==response["id"],ps))[0]
+                    # Red
+                    print(f'\033[91m>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} disconnected. GAME OVER.\033[0m')
+                    # Display the additional rules
+                    # Magenta
+                    print("\033[95m>>> Since at least one player died, the following rules are added from now on:")
+                    aliveCount = response["aliveCount"]
+                    if aliveCount <= 4:
+                        print("\033[95m>>> 1. If two or more players choose the same number, the number is invalid and all players who selected the number will lose a point.\033[0m")
+                    if aliveCount <= 3:
+                        print("\033[95m>>> 2. If a player chooses the exact correct number, they win the round and all other players lose two points.\033[0m")
+                    if aliveCount <= 2:
+                        print("\033[95m>>> 3. If someone chooses 0, a player who chooses 100 automatically wins the round.\033[0m")
+                else:
+                    raise Exception("Unexpected event received")
+                
+                result = await recvMsg(ws)
+                print(result)
+                response = json.loads(result)
+                assert("event" in response)
+            
             assert(response["event"]=="gameInfo")
             gameInfo = response
         
@@ -274,11 +303,11 @@ async def main():
             if d["reason"]=="deadLimit":
                 # Red
                 print(f'\033[91m>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} reached {p["score"]} score. GAME OVER.\033[0m')
-            else:
+            elif d["reason"]=="disconnected":
                 # Red
                 print(f'\033[91m>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} disconnected. GAME OVER.\033[0m')
-        # Display the additional rules if someone died
-        if len(gameInfo["justDiedParticipants"]) > 0:
+        # Display the additional rules if someone died because of disconnected or deadLimit
+        if len(filter(lambda dp : dp["reason"]!="disconnectedMidgame",gameInfo["justDiedParticipants"])) > 0:
             # Magenta
             print("\033[95m>>> Since at least one player died, the following rules are added from now on:")
             aliveCount = gameInfo["aliveCount"]
