@@ -15,6 +15,13 @@ WSS_URL = f'ws{"s" if SSL else ""}://{SERVER_IP}/game'
 
 CLIENT_VERSION = "20230802.dev"
 
+# an event for receiving the success message after submitGuess
+guessSuccessEvent = asyncio.Event()
+
+# endTime and a lock for mutex
+endTime = None
+# endTimeLock = asyncio.Lock()
+
 #* purely functional functions
 def now():
     return round(time.time() * 1000)
@@ -72,12 +79,14 @@ async def pingpong(ws):
 
 #* Tasks that happen during round
 
-async def printCountdown(endTime):
+async def printCountdown():
+    global endTime
     while now() < endTime:
         print(f'{(endTime-now())//1000}s') 
         await asyncio.sleep(1)
 
-async def submitGuesses(ws,id,endTime):
+async def submitGuesses(ws,id):
+    global endTime
     while now() < endTime:
         guess = None
         try:
@@ -99,16 +108,16 @@ async def submitGuesses(ws,id,endTime):
         }
         sendMsg(ws,msg)
 
-        # Receive submitGuess reply (ignore)
-        result = ws.recv()
-        print("received: ",result)
-        response = json.loads(result)
-        assert(response["result"]=="success")
+        # Receive submitGuess reply - message will be received in main loop instead 
+        await guessSuccessEvent.wait()
+        # Need to clear it or else it will just pass through
+        guessSuccessEvent.clear()
 
         # Green
         print("\033[32m>>> Guess registered.\033[0m")
 
 async def main(): 
+    global endTime
     # variables
     nickname = ""
     id = ""
@@ -177,8 +186,8 @@ async def main():
         if not isDead:
             print(f'\033[93m>>> Round {gameInfo["round"]} - {nickname}\033[0m')
             endTime = gameInfo["roundEndTime"]
-            submitGuessesTask = asyncio.create_task(submitGuesses(ws,id,endTime))
-            printCountdownTask = asyncio.create_task(printCountdown(endTime))
+            submitGuessesTask = asyncio.create_task(submitGuesses(ws,id))
+            printCountdownTask = asyncio.create_task(printCountdown())
             
             result = await recvMsg(ws)
             print(result)
@@ -208,19 +217,15 @@ async def main():
                     elif response["event"]=="shortenCountdown":
                         # update endTime
                         endTime = response["endTime"]
-                        # cancel original tasks
-                        submitGuessesTask.cancel()
-                        printCountdownTask.cancel()
-                        # reinitiate those tasks with the new endTime
-                        submitGuessesTask = asyncio.create_task(submitGuesses(ws,id,endTime))
-                        printCountdownTask = asyncio.create_task(printCountdown(endTime))
                     else:
                         raise Exception("Unexpected event received")
-                
+                else:
+                    assert(response["result"]=="success")
+                    guessSuccessEvent.set()
                 result = await recvMsg(ws)
                 print(result)
                 response = json.loads(result)
-
+            
             assert(response["event"]=="gameInfo")
             gameInfo = response
 
@@ -307,7 +312,7 @@ async def main():
                 # Red
                 print(f'\033[91m>>> {p["nickname"]+(" (YOU)" if p["id"]==id else "")} disconnected. GAME OVER.\033[0m')
         # Display the additional rules if someone died because of disconnected or deadLimit
-        if len(filter(lambda dp : dp["reason"]!="disconnectedMidgame",gameInfo["justDiedParticipants"])) > 0:
+        if len(list(filter(lambda dp : dp["reason"]!="disconnectedMidgame",gameInfo["justDiedParticipants"]))) > 0:
             # Magenta
             print("\033[95m>>> Since at least one player died, the following rules are added from now on:")
             aliveCount = gameInfo["aliveCount"]
