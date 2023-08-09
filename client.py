@@ -19,8 +19,10 @@ CLIENT_VERSION = "20230802.dev"
 guessSuccessEvent = asyncio.Event()
 
 # endTime and a lock for mutex
-endTime = None
+globalEndTime = 0
 # endTimeLock = asyncio.Lock()
+
+globalGuess = None
 
 #* purely functional functions
 def now():
@@ -58,7 +60,6 @@ async def obtainToken():
 def sendMsg(ws,msg):
     print("sent: ", msg)
     ws.send(json.dumps(msg))
-    print("finished sending")
 
 # ws.recv() will stop the ping pongs
 # receive a message, only use this when you know the message will not come soon
@@ -80,44 +81,54 @@ async def pingpong(ws):
 #* Tasks that happen during round
 
 async def printCountdown():
-    global endTime
-    while now() < endTime:
-        print(f'{(endTime-now())//1000}s') 
-        await asyncio.sleep(1)
+    global globalEndTime, globalGuess
+    while True:
+        if now() < globalEndTime: 
+            seconds = (globalEndTime-now())//1000
+            if seconds < 10 or seconds%5==0:
+                print(f'{(globalEndTime-now())//1000}s') 
+            if seconds < 10:
+                if globalGuess != None:
+                    print(f'>>> Your guess is {globalGuess}.')
+                else:
+                    print("\033[91m>>> You have not submitted your guess.\033[0m")
+            await asyncio.sleep(1)
 
 async def submitGuesses(ws,id):
-    global endTime
-    while now() < endTime:
+    global globalEndTime, globalGuess
+    while True:
         guess = None
         try:
             # Yellow
-            guess = int(await ainput(f'\033[93m>>> Please input your guess: \033[0m'))
+            guess = int(await ainput())
         except (TypeError, ValueError) as e:
             guess = None
         
-        while not (isinstance(guess, int) and guess >= 0 and guess <= 100):
-            try:
-                # Red
-                guess = int(await ainput("\033[91mGuess invalid, please input again: \033[0m"))
-            except (TypeError, ValueError) as e:
-                guess = None
-        msg = {
-            "method": "submitGuess",
-            "id": id,
-            "guess": guess,
-        }
-        sendMsg(ws,msg)
+        if not (isinstance(guess, int) and guess >= 0 and guess <= 100):
+            # Red, invalid guess
+            print("\033[91m>>> Guess invalid, please input again. \033[0m")
+        elif now() >= globalEndTime:
+            # Red, submitted too late
+            print("\033[91m>>> Time is up, your guess is invalid. \033[0m")
+        else:
 
-        # Receive submitGuess reply - message will be received in main loop instead 
-        await guessSuccessEvent.wait()
-        # Need to clear it or else it will just pass through
-        guessSuccessEvent.clear()
+            msg = {
+                "method": "submitGuess",
+                "id": id,
+                "guess": guess,
+            }
+            sendMsg(ws,msg)
+            # Receive submitGuess reply - message will be received in main loop instead 
+            await guessSuccessEvent.wait()
+            # Need to clear it or else it will just pass through
+            guessSuccessEvent.clear()
 
-        # Green
-        print("\033[32m>>> Guess registered.\033[0m")
+            globalGuess = guess
+            # Green
+            print(f'\033[32m>>> Guess {guess} registered.\033[0m')
 
 async def main(): 
-    global endTime
+    global globalEndTime, globalGuess
     # variables
     nickname = ""
     id = ""
@@ -182,13 +193,17 @@ async def main():
         print(">>> ", p["nickname"])
 
     # Round main loop 
+
+    submitGuessesTask = asyncio.create_task(submitGuesses(ws,id))
+    printCountdownTask = asyncio.create_task(printCountdown())
+    
     while not gameInfo["gameEnded"]:
         if not isDead:
-            print(f'\033[93m>>> Round {gameInfo["round"]} - {nickname}\033[0m')
-            endTime = gameInfo["roundEndTime"]
-            submitGuessesTask = asyncio.create_task(submitGuesses(ws,id))
-            printCountdownTask = asyncio.create_task(printCountdown())
-            
+            print(f'\033[93m>>> Round {gameInfo["round"]} - {nickname}, the 3-minute countdown starts now.\033[0m')
+            print(f'\033[93m>>> Please input your guess and hit \"enter\" to submit, you can change your guess anytime. \033[0m')
+            globalEndTime = gameInfo["roundEndTime"]
+            globalGuess = None
+
             result = await recvMsg(ws)
             print(result)
             response = json.loads(result)
@@ -215,8 +230,9 @@ async def main():
                         if aliveCount <= 2:
                             print("\033[95m>>> 3. If someone chooses 0, a player who chooses 100 automatically wins the round.\033[0m")
                     elif response["event"]=="shortenCountdown":
-                        # update endTime
-                        endTime = response["endTime"]
+                        print(f'\033[93m>>> Every player has submitted their guess, the timer is changed to 15 seconds. \033[0m')
+                        # update globalEndTime
+                        globalEndTime = response["endTime"]
                     else:
                         raise Exception("Unexpected event received")
                 else:
