@@ -13,7 +13,7 @@ SSL = sys.argv[2]=="True" if len(sys.argv) > 2 else True
 SERVER_URL = f'http{"s" if SSL else ""}://{SERVER_IP}'
 WSS_URL = f'ws{"s" if SSL else ""}://{SERVER_IP}/game'
 
-CLIENT_VERSION = "20230809.1"
+CLIENT_VERSION = "20230809.2"
 
 # an event for receiving the success message after submitGuess
 guessSuccessEvent = asyncio.Event()
@@ -43,7 +43,10 @@ async def obtainToken():
             acceptedClientVersions = response["acceptedClientVersions"]
             if CLIENT_VERSION not in acceptedClientVersions:
                 raise Exception("VERSION ERROR: Incompatible version with server. Please obtain the latest code.")
-    
+            networkDelay = now()-response["currentTime"]
+            print("Network delay (ms): ",networkDelay)
+            if networkDelay > response["allowedNetworkDelay"] or networkDelay < 0:
+                print("Your network connection is unstable, or your system time is wrong.")
         # async with session.post(
         #     SERVER_URL + "???", 
         #     verify_ssl=False, 
