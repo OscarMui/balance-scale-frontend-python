@@ -13,7 +13,7 @@ SSL = sys.argv[2]=="True" if len(sys.argv) > 2 else True
 SERVER_URL = f'http{"s" if SSL else ""}://{SERVER_IP}'
 WSS_URL = f'ws{"s" if SSL else ""}://{SERVER_IP}/game'
 
-CLIENT_VERSION = "20230809.0"
+CLIENT_VERSION = "20230809.1"
 
 # an event for receiving the success message after submitGuess
 guessSuccessEvent = asyncio.Event()
@@ -86,8 +86,8 @@ async def printCountdown():
     while True:
         if now() < globalEndTime and now() >= globalStartTime: 
             seconds = (globalEndTime-now())//1000
-            if seconds < 15 or seconds%5==0: 
-                if seconds < 15:
+            if seconds <= 15 or seconds%10==0: 
+                if seconds <= 15:
                     if globalGuess != None:
                         print(f'{(globalEndTime-now())//1000}s (Your guess is {globalGuess}.)')
                     else:
