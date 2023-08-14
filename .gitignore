@@ -4,3 +4,5 @@ output
 *.spec
 *.zip
 .DS_Store
+build
+dist
