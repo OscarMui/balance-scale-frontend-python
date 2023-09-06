@@ -13,7 +13,7 @@ SSL = sys.argv[2]=="True" if len(sys.argv) > 2 else True
 SERVER_URL = f'http{"s" if SSL else ""}://{SERVER_IP}'
 WSS_URL = f'ws{"s" if SSL else ""}://{SERVER_IP}/game'
 
-CLIENT_VERSION = "20230809.2"
+CLIENT_VERSION = "20230811.dev"
 
 # an event for receiving the success message after submitGuess
 guessSuccessEvent = asyncio.Event()
@@ -190,9 +190,17 @@ async def main():
     response = json.loads(result)
     assert(response["result"]=="success")
 
+    print(f'Waiting for players ({response["participantsCount"]}/{response["participantsPerGame"]})')
     # Receive gameStart event
     result = await recvMsg(ws)
     response = json.loads(result)
+
+    while(response["event"]!="gameStart"):
+        assert(response["event"]=="updateParticipantsCount")
+        print(f'Waiting for players ({response["participantsCount"]}/{response["participantsPerGame"]})')
+        result = await recvMsg(ws)
+        response = json.loads(result)
+
     assert(response["event"]=="gameStart")
     gameInfo = response
 
