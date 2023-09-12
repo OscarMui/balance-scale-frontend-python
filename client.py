@@ -13,7 +13,7 @@ SSL = sys.argv[2]=="True" if len(sys.argv) > 2 else True
 SERVER_URL = f'http{"s" if SSL else ""}://{SERVER_IP}'
 WSS_URL = f'ws{"s" if SSL else ""}://{SERVER_IP}/game'
 
-CLIENT_VERSION = "20230811.dev"
+CLIENT_VERSION = "20230902.0.cmd"
 
 # an event for receiving the success message after submitGuess
 guessSuccessEvent = asyncio.Event()
@@ -172,7 +172,7 @@ async def main():
 
     print(">>> Welcome to the game!")
     print(">>> Difficulty: King of Diamonds - Tenbin (Balance Scale)")
-    print(">>> Rules: The player must select a number from 0 to 100. Once all numbers are selected, the average will be calculated, then multiplied by 0.8. The player closest to the number wins the round. The other players each lose a point. All players start with 0 points. If a player reaches -10 points, it is a GAME OVER for that player. A new rule will be introduced for every player eliminated. It is GAME CLEAR for the last remaining player.")
+    print(">>> Rules: The player must select a number from 0 to 100. Once all numbers are selected, the average will be calculated, then multiplied by 0.8. The player closest to the number wins the round. The other players each lose a point. All players start with 0 points. If a player reaches -5 points, it is a GAME OVER for that player. A new rule will be introduced for every player eliminated. It is GAME CLEAR for the last remaining player.")
     nickname = await ainput("\033[93m>>> Are you ready? Please input your nickname: \033[0m")
     while nickname == "":
         nickname = await ainput("\033[91m>>> Nickname cannot be blank, please input again: \033[0m")
@@ -220,7 +220,7 @@ async def main():
             if gameInfo["roundStartTime"]-now() > 0:
                 print("The next round will start shortly, please wait...")
                 await asyncio.sleep((gameInfo["roundStartTime"]-now())/1000)
-            print(f'\033[93m>>> Round {gameInfo["round"]} - {nickname}, the 3-minute countdown starts now.\033[0m')
+            print(f'\033[93m>>> Round {gameInfo["round"]} - {nickname}, the 2-minute countdown starts now.\033[0m')
             print(f'\033[93m>>> Please input your guess and hit \"enter\" to submit, you can change your guess anytime. \033[0m')
             globalEndTime = gameInfo["roundEndTime"]
             globalStartTime = gameInfo["roundStartTime"]
