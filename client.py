@@ -13,7 +13,7 @@ SSL = sys.argv[2]=="True" if len(sys.argv) > 2 else True
 SERVER_URL = f'http{"s" if SSL else ""}://{SERVER_IP}'
 WSS_URL = f'ws{"s" if SSL else ""}://{SERVER_IP}/game'
 
-CLIENT_VERSION = "20230902.0.cmd"
+CLIENT_VERSION = "20230912.0.cmd"
 
 # an event for receiving the success message after submitGuess
 guessSuccessEvent = asyncio.Event()
