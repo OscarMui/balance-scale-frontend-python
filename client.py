@@ -5,7 +5,7 @@ import aiohttp # for REST API
 import sys # take command line arguments
 import time 
 from concurrent.futures import ThreadPoolExecutor
-from enum import Enum
+import re #regex
 
 #* constants
 SERVER_IP = sys.argv[1] if len(sys.argv) > 1 else "tenbin-b735da2f640d.herokuapp.com"
@@ -13,7 +13,7 @@ SSL = sys.argv[2]=="True" if len(sys.argv) > 2 else True
 SERVER_URL = f'http{"s" if SSL else ""}://{SERVER_IP}'
 WSS_URL = f'ws{"s" if SSL else ""}://{SERVER_IP}/game'
 
-CLIENT_VERSION = "20230912.1.cmd"
+CLIENT_VERSION = "20230912.2.cmd"
 
 # an event for receiving the success message after submitGuess
 guessSuccessEvent = asyncio.Event()
@@ -173,9 +173,17 @@ async def main():
     print(">>> Welcome to the game!")
     print(">>> Difficulty: King of Diamonds - Tenbin (Balance Scale)")
     print(">>> Rules: The player must select a number from 0 to 100. Once all numbers are selected, the average will be calculated, then multiplied by 0.8. The player closest to the number wins the round. The other players each lose a point. All players start with 0 points. If a player reaches -5 points, it is a GAME OVER for that player. A new rule will be introduced for every player eliminated. It is GAME CLEAR for the last remaining player.")
+    
+    regex = re.compile(r'^[A-Za-z0-9_]+$')
     nickname = await ainput("\033[93m>>> Are you ready? Please input your nickname: \033[0m")
-    while nickname == "":
-        nickname = await ainput("\033[91m>>> Nickname cannot be blank, please input again: \033[0m")
+    while nickname == "" or regex.match(nickname) == None or len(nickname) > 12:
+        if nickname == "":
+            nickname = await ainput("\033[91m>>> Nickname cannot be blank, please input again: \033[0m")
+        elif(len(nickname) > 12):
+            nickname = await ainput("\033[91m>>> Nickname cannot be longer than 12 characters, please input again: \033[0m")
+        elif regex.match(nickname) == None:
+            nickname = await ainput("\033[91m>>> Nickname can only contain English letters, digits and underscores, please input again: \033[0m")
+
     # request for join room (values mostly copied from docs)
     # https://docs.openvidu.io/en/stable/developing/rpc/#joinroom
     msg = {
@@ -261,8 +269,8 @@ async def main():
                         else:
                             assert(response["reason"]=="participantDisconnectedMidgame")
                             print(f'\033[93m>>> Based on the new rules, you now have 15 seconds to amend your guess. The timer will start shortly. \033[0m')
-                        globalStartTime = response.get("startTime",0)
-                        globalEndTime = response["endTime"]
+                        globalStartTime = response.get("startTime",0)+now()
+                        globalEndTime = response["endTime"]+now()
                     else:
                         raise Exception("Unexpected event received")
                 else:
