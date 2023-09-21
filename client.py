@@ -379,12 +379,19 @@ async def main():
             if aliveCount <= 2:
                 print("\033[95m>>> 3. If someone chooses 0, a player who chooses 100 automatically wins the round.\033[0m")
     ps = response["participants"]
-    filteredP = list(filter(lambda p: not p["isDead"],ps))
-    #cyan
-    if(len(filteredP)>0):
+    filteredP = list(filter(lambda p: not p["isDead"] and not p["isBot"],ps))
+    filteredBots = list(filter(lambda p: not p["isDead"] and p["isBot"],ps))
+    if(len(filteredP)==1):
         p = filteredP[0]
+        # cyan
         print(f'\033[96m>>> Game ended, the winner is {p["nickname"]+(" (YOU)" if p["id"]==id else "")}\033[0m')
+    elif(len(filteredBots)>0):
+        # there are bots left
+        # cyan
+        print(f'\033[96m>>> The winner are bots.\033[0m')
     else:
+        # red
         print(f'\033[91m>>> There is no winner. GAME OVER for everyone.\033[0m')
+    filteredP = list(filter(lambda p: not p["isDead"],ps))
     ws.close()
 asyncio.run(main())
