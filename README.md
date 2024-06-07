@@ -10,6 +10,8 @@ Written in Python mainly using the asyncio library to handle communication with 
 
 ## Installation
 
+I tested the code with Python 3.10. I am not sure if it works for other Python versions.
+
 Requires Python and pip
 
 [Check out how to install pip](https://pip.pypa.io/en/stable/installation/)
@@ -51,6 +53,6 @@ A new rule will be introduced for every player eliminated.
 
 3 players remaining: If a player chooses the exact correct number, they win the round and all other players lose two points.
 
-2 players remaining: If someone chooses 0, a player who chooses 100 automatically wins the round.
+2 players remaining: If someone chooses 0, a player who chooses 100 wins the round.
 
 It is GAME CLEAR for the last remaining player.

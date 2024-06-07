@@ -13,7 +13,7 @@ SSL = sys.argv[2]=="True" if len(sys.argv) > 2 else True
 SERVER_URL = f'http{"s" if SSL else ""}://{SERVER_IP}'
 WSS_URL = f'ws{"s" if SSL else ""}://{SERVER_IP}/game'
 
-CLIENT_VERSION = "20230912.3.cmd"
+CLIENT_VERSION = "20240106.0.cmd"
 
 # an event for receiving the success message after submitGuess
 guessSuccessEvent = asyncio.Event()
@@ -260,15 +260,15 @@ async def main():
                         if aliveCount <= 3:
                             print("\033[95m>>> 2. If a player chooses the exact correct number, they win the round and all other players lose two points.\033[0m")
                         if aliveCount <= 2:
-                            print("\033[95m>>> 3. If someone chooses 0, a player who chooses 100 automatically wins the round.\033[0m")
+                            print("\033[95m>>> 3. If someone chooses 0, a player who chooses 100 wins the round.\033[0m")
                     elif response["event"]=="changeCountdown":
                         if response["reason"]=="allDecided":
-                            print(f'\033[93m>>> Every player has submitted their guess, the timer is changed to 15 seconds. \033[0m')
+                            print(f'\033[93m>>> Every player has submitted their guess, the timer is changed to 5 seconds. \033[0m')
                             # update globalEndTime
                             
                         else:
                             assert(response["reason"]=="participantDisconnectedMidgame")
-                            print(f'\033[93m>>> Based on the new rules, you now have 15 seconds to amend your guess. The timer will start shortly. \033[0m')
+                            print(f'\033[93m>>> Based on the new rules, you now have 30 seconds to amend your guess. The timer will start shortly. \033[0m')
                         globalStartTime = response.get("startTime",0)+now()
                         globalEndTime = response["endTime"]+now()
                     else:
@@ -313,7 +313,7 @@ async def main():
                     if aliveCount <= 3:
                         print("\033[95m>>> 2. If a player chooses the exact correct number, they win the round and all other players lose two points.\033[0m")
                     if aliveCount <= 2:
-                        print("\033[95m>>> 3. If someone chooses 0, a player who chooses 100 automatically wins the round.\033[0m")
+                        print("\033[95m>>> 3. If someone chooses 0, a player who chooses 100 wins the round.\033[0m")
                 else:
                     raise Exception("Unexpected event received")
                 
@@ -352,7 +352,7 @@ async def main():
         for r in gameInfo["justAppliedRules"]:
             # Magenta
             if r == 2:
-                print("\033[95m>>> Rule applied: If someone chooses 0, a player who chooses 100 automatically wins the round.\033[0m")
+                print("\033[95m>>> Rule applied: If someone chooses 0, a player who chooses 100 wins the round.\033[0m")
             elif r == 3:
                 print("\033[95m>>> Rule applied: If a player chooses the exact correct number, they win the round and all other players lose two points.\033[0m")
             elif r == 4:
@@ -377,7 +377,7 @@ async def main():
             if aliveCount <= 3:
                 print("\033[95m>>> 2. If a player chooses the exact correct number, they win the round and all other players lose two points.\033[0m")
             if aliveCount <= 2:
-                print("\033[95m>>> 3. If someone chooses 0, a player who chooses 100 automatically wins the round.\033[0m")
+                print("\033[95m>>> 3. If someone chooses 0, a player who chooses 100 wins the round.\033[0m")
     ps = response["participants"]
     filteredP = list(filter(lambda p: not p["isDead"] and not p["isBot"],ps))
     filteredBots = list(filter(lambda p: not p["isDead"] and p["isBot"],ps))
